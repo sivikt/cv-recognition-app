@@ -1,0 +1,14 @@
+Flask==1.0.2
+Jinja2==2.10
+Werkzeug==0.14.1
+numpy==1.15.1
+scipy==1.1.0
+keras==2.2.4
+tensorflow==1.12.0
+pillow==5.2.0
+opencv-python==3.4.3.18
+Cython==0.28.5
+contextlib2==0.5.5
+lxml==4.2.5
+gunicorn==19.9.0
+requests==2.21.0
