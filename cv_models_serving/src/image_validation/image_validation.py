@@ -4,7 +4,7 @@ import logging
 
 from scipy import stats
 
-from util.timer import create_elapsed_timer
+from ..util.timer import create_elapsed_timer
 from . import validation_consts as vc
 from .car_validation import CarValidatorBase
 

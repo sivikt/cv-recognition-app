@@ -5,8 +5,8 @@ import tensorflow as tf
 import math
 import logging
 
-import third_party.label_map_util as label_map_util
-from util.timer import create_elapsed_timer
+from ..third_party import label_map_util as label_map_util
+from ..util.timer import create_elapsed_timer
 from . import validation_consts as vc
 
 

@@ -3,8 +3,8 @@ import numpy as np
 import pathlib
 import logging
 
-from util.timer import create_elapsed_timer
-import util.openvino as openvino_util
+from ..util.timer import create_elapsed_timer
+from ..util import openvino as openvino_util
 from . import car_validation as cv
 from .car_validation import CarValidatorBase
 from . import validation_consts as vc
