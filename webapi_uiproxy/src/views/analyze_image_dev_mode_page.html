@@ -1,0 +1,593 @@
+{% extends "main.html" %}
+{% block content %}
+
+<style>
+    .container {
+        font-family: monospace;
+        min-width: 80%;
+        width: 80%;
+        margin: auto;
+    }
+
+    .btn {
+        width: 200px;
+        font-size: 14pt;
+        height: 35px;
+    }
+
+    .file-info {
+        float: left;
+        margin-right: 10px;
+        margin-top: 1px;
+    }
+
+    #upload-controls {
+        float: left;
+        margin-right: 20px;
+    }
+
+    #upload-progress {
+        margin-top: 5px;
+    }
+
+    .file-info-label {
+        font-weight: bold;
+        color: #3448bb;
+        margin-right: 10px;
+    }
+
+    .error-label {
+        font-weight: bold;
+        color: #c31c1c;
+        margin-right: 10px;
+    }
+
+    #upload-file-final-container {
+        overflow: auto;
+    }
+
+    #error-message {
+        margin-top: 30px;
+    }
+
+    .header {
+        margin: 30px 0px 30px 0px;
+    }
+
+    .page-number {
+        font-weight: bold;
+        font-size: 14pt;
+        margin: 10px 0px 10px 0px;
+        text-align: center;
+    }
+
+    hr {
+        display: block;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+        /* margin-left: auto; */
+        /* margin-right: auto; */
+        /* border-style: inset; */
+        /* border-width: 1px; */
+        width: 30%;
+    }
+
+    .canvas-wrapper {
+        width: 100%;
+        margin: auto;
+        display: table;
+        text-align: center;
+    }
+
+    #cancel-button {
+        margin-right: 20px;
+    }
+
+    .loader {
+        border: 10px solid #f3f3f3; /* Light grey */
+        border-top: 10px solid #3498db; /* Blue */
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 2s linear infinite;
+
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        margin-top: -50px;
+
+        z-index: 99999;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    #progress-loading-indicator {
+    }
+
+    pre {
+        display: block;
+        font-family: monospace;
+        white-space: pre;
+        margin: 10px 0 5px 0;
+    }
+
+    #orig-image-container {
+        margin-top: 20px;
+        padding: 4px 4px 2px 4px;
+        border: 2px solid #dadada;
+        border-radius: 2px;
+    }
+
+    #orig-image-to-load {
+        width: 100%;
+    }
+
+    #canvas-container {
+        margin-top: 20px;
+        padding: 4px 4px 2px 4px;
+        border: 2px solid #dadada;
+        border-radius: 2px;
+        margin-bottom: 40px;
+    }
+
+    #visualize-founded-objects-canvas {
+        width: 100%;
+    }
+
+    #threshold-container {
+        margin-top: 10px;
+    }
+
+    .classes-checkbox-container {
+        margin-right: 10px;
+    }
+
+    .object-label-info {
+        font-family: Courier New;
+        font-size: 12pt;
+    }
+
+    .bbox-scores-info {
+        padding-left: 20px;
+        font-family: Courier New;
+        font-size: 10pt;
+    }
+</style>
+
+<script>
+    var currentUploadingReq;
+    var objectsDetectionClassesIndex;
+    var detectionResult = {};
+    var selectedFileURL = null;
+    var selectedFoundClassesSet = new Set();
+
+
+    function displayImageInfo(elem) {
+        var txt = "";
+        if ('files' in elem)
+        {
+            if (elem.files.length == 0 || elem.files.length > 1)
+            {
+                txt = "Select only one file.";
+            }
+            else {
+                var file = elem.files[0];
+
+                document.querySelector('#file-name').innerHTML = file.name;
+                document.querySelector('#file-size').innerHTML = file.size + ' bytes';
+
+                document.querySelector('#orig-image-container').style.display = 'block';
+
+                var fr=new FileReader();
+                fr.readAsDataURL(file);
+                var target = document.getElementById('orig-image-to-load');
+                fr.onload = function (e) {
+                    target.src = this.result;
+                };
+
+                selectedFileURL = URL.createObjectURL(file);
+            }
+        }
+    }
+
+    function onFileSelected() {
+        displayImageInfo(this);
+        document.querySelector('#upload-controls').style.display = 'block';
+        document.querySelector('#file-info').style.display = 'block';
+    }
+
+    var colors = [
+        '#FFB6C1',
+        '#D2691E',
+        '#7FFFD4',
+        '#FF00FF',
+        '#FF0000',
+        '#aaffc3',
+        '#bfef45',
+        '#800000',
+        '#800080',
+        '#7B68EE'
+    ];
+
+    function drawBoxes(ctx, imgWidth, imgHeight, minScoreThreshold, maxScoreThreshold) {
+        var i = 0;
+        selectedFoundClassesSet.forEach(function (key) {
+            detectionResult.bboxesOrderedByScores.get(key).forEach(function (bboxScore) {
+                var isDraw = (minScoreThreshold == undefined && minScoreThreshold == undefined) ||
+                             ( (minScoreThreshold != undefined) && (minScoreThreshold != undefined) &&
+                               (bboxScore.score >= minScoreThreshold) && (bboxScore.score <= maxScoreThreshold) );
+
+                if (isDraw)
+                {
+                    var label = objectsDetectionClassesIndex[key].name + ': ' + Number((bboxScore.score*100).toFixed(2)) + '%' ;
+                    var xmin = Number((bboxScore.bbox[1]*imgWidth).toFixed(0));
+                    var ymin = Number((bboxScore.bbox[0]*imgHeight).toFixed(0));
+                    var xmax = Number((bboxScore.bbox[3]*imgWidth).toFixed(0));
+                    var ymax = Number((bboxScore.bbox[2]*imgHeight).toFixed(0));
+
+                    ctx.font = "bold 12pt Courier";
+                    ctx.strokeStyle = colors[i];
+                    ctx.fillStyle = colors[i];
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(xmin, ymin);
+                    ctx.lineTo(xmax, ymin)
+                    ctx.lineTo(xmax, ymax);
+                    ctx.lineTo(xmin, ymax);
+                    ctx.lineTo(xmin, ymin);
+                    ctx.stroke();
+
+                    var deltaX = 10;
+                    var deltaY = 15;
+                    ctx.fillText(label, xmin+deltaX, ymin+deltaY);
+
+                    i += 1;
+                }
+            });
+        });
+
+    }
+
+    function drawBoundingBoxes() {
+        var minScoreThreshold = Number(document.getElementById('score-threshold-min').value);
+        var maxScoreThreshold = Number(document.getElementById('score-threshold-max').value);
+
+        var origImgElem = document.getElementById('orig-image-to-load');
+        var canvas = document.getElementById('visualize-founded-objects-canvas');
+        canvas.width = origImgElem.width;
+        canvas.height = origImgElem.height;
+
+        var image= new Image();
+
+        var reader = new FileReader();
+        reader.addEventListener("load", function (evt) {
+        	if (evt.target.readyState == FileReader.DONE) {
+                image.onload = function () {
+                    var hRatio = canvas.width / image.width;
+                    var vRatio = canvas.height / image.height;
+                    var ratio  = Math.min(hRatio, vRatio);
+
+                    var ctx = canvas.getContext('2d');
+                    ctx.drawImage(image, 0, 0, image.width, image.height, 0, 0, image.width*ratio, image.height*ratio);
+
+                    drawBoxes(ctx, canvas.width, canvas.height, minScoreThreshold, maxScoreThreshold);
+                };
+				image.src = this.result;
+			}
+        }, false);
+
+        reader.readAsDataURL(document.querySelector('#image-file-selector').files[0]);
+    }
+
+    function onSelectUnselectClasses(cb) {
+        if (cb.checked) {
+            selectedFoundClassesSet.add(Number(cb.value));
+        }
+        else {
+            selectedFoundClassesSet.delete(Number(cb.value));
+        }
+        console.log(cb.value + '_' + cb.checked + '_' + Array.from(selectedFoundClassesSet).join(','));
+    }
+
+    function doObjectsVisualization(btn) {
+        var minTh = Number(document.getElementById('score-threshold-min').value);
+        var maxTh = Number(document.getElementById('score-threshold-max').value);
+
+        if (minTh > maxTh) {
+            alert('Min score threshold must be less than or equal to max score threshold');
+        }
+        else {
+            console.log(minTh + '_' + maxTh + '_' + Array.from(selectedFoundClassesSet).join(','));
+            drawBoundingBoxes();
+        }
+    }
+
+    function makeBBoxStr(bbox) {
+        return 'bbox=(ymin=' + Number((bbox[0]).toFixed(2)) + ', xmin=' + Number((bbox[1]).toFixed(2)) + ', ymax=' + Number((bbox[2]).toFixed(2)) + ', xmax=' + Number((bbox[3]).toFixed(2)) + ')';
+    }
+
+    function showDetectedObjects(response) {
+        if (currentUploadingReq.status === 200) {
+            document.querySelector('#choose-image-button').style.display = 'block';
+            document.querySelector('#cancel-button').style.display = 'none';
+            document.querySelector('#upload-controls').style.display = 'none';
+            document.querySelector('#results').style.display = 'block';
+
+            console.log(response.data);
+
+            detectionResult = response.data;
+
+            var foundClassesSet = new Set();
+            selectedFoundClassesSet = new Set();
+            detectionResult.classes.forEach(function (c) {
+                if (objectsDetectionClassesIndex[c] !== undefined) {
+                    foundClassesSet.add(c);
+                    selectedFoundClassesSet.add(c);
+                }
+            });
+
+            console.log(Array.from(foundClassesSet).join(','));
+
+
+            var foundClassesArray = [];
+            foundClassesSet.forEach(function (c) {
+                foundClassesArray.push({
+                    id: c,
+                    name: objectsDetectionClassesIndex[c].name
+                });
+            });
+
+            foundClassesArray.sort(function (c1,c2) {
+                if (c1.name < c2.name) {
+                    return -1;
+                }
+                else if (c1.name === c2.name) {
+                    return 0;
+                }
+                else {
+                    return 1;
+                }
+            });
+
+            console.log(foundClassesArray);
+
+            var checkboxes = '';
+            foundClassesArray.forEach(function (c) {
+                checkboxes += '<label class="classes-checkbox-container"><input type="checkbox" name="classes[]" value="' + c.id + '" checked onclick="onSelectUnselectClasses(this);"/>' + c.name + '</label>';
+            });
+            document.querySelector('#objects-to-visualize-selector').innerHTML = checkboxes;
+
+
+            detectionResult.bboxesOrderedByScores = new Map();
+            detectionResult.classes.forEach(function (c, i) {
+                detectionResult.bboxesOrderedByScores.set(c, []);
+            });
+
+            detectionResult.classes.forEach(function (c, i) {
+                detectionResult.bboxesOrderedByScores.get(c).push({
+                    bbox: detectionResult.bboxes[i],
+                    score: detectionResult.scores[i]
+                });
+            });
+
+            detectionResult.bboxesOrderedByScores.forEach(function (value, key, map) {
+                value.sort(function (e1, e2) {
+                    return e1.score - e2.score;
+                });
+            });
+
+            var objectsInfo = '';
+            foundClassesArray.forEach(function (c) {
+                detectionResult.bboxesOrderedByScores.get(c.id).forEach(function (bboxWithScore) {
+                    objectsInfo += '<div class="object-label-info">' + c.name + '</div>';
+                    objectsInfo += '<div class="bbox-scores-info">' + makeBBoxStr(bboxWithScore.bbox) + ' score=' + Number((bboxWithScore.score).toFixed(3)) + '</div>';
+                });
+
+                objectsInfo += '<br/>';
+            });
+            document.querySelector('#all-found-objects').innerHTML = objectsInfo;
+
+
+            drawBoundingBoxes();
+
+            document.querySelector('#scroll-to').scrollIntoView();
+        }
+        else {
+            document.querySelector('#choose-image-button').style.display = 'block';
+            document.querySelector('#error-message').style.display = 'block';
+            document.querySelector('#error-code').innerHTML = response.error_code;
+            document.querySelector('#error-desc').innerHTML = response.error_desc;
+        }
+
+        document.querySelector('#upload-progress').style.display = 'none';
+        document.querySelector('#progress-loading-indicator').style.display = 'none';
+    }
+
+
+    function processUploadingResponse(e) {
+        document.querySelector('#cancel-button').style.display = 'none';
+
+        if (currentUploadingReq.status !== 200) {
+            document.querySelector('#progress-loading-indicator').style.display = 'none';
+
+            document.querySelector('#upload-progress').style.display = 'none';
+            document.querySelector('#choose-image-button').style.display = 'block';
+            document.querySelector('#error-message').style.display = 'block';
+            document.querySelector('#error-code').innerHTML = currentUploadingReq.response.error_code;
+            document.querySelector('#error-desc').innerHTML = currentUploadingReq.response.error_desc;
+        }
+        else {
+            showDetectedObjects(currentUploadingReq.response)
+        }
+    }
+
+    function showUploadProgress(e) {
+        var label = '';
+        if (e.loaded === e.total) {
+            label = 'processing...';
+        }
+        else {
+            var percent_complete = (e.loaded / e.total)*100;
+            label = Math.round(percent_complete) + '% uploaded'
+        }
+
+        document.querySelector('#upload-percentage').innerHTML = label;
+    }
+
+    function cancelUploading() {
+        selectedImage = new Image();
+        detectionResult = {};
+        selectedFileURL = null;
+        selectedFoundClassesSet = new Set();
+
+
+        if (currentUploadingReq) {
+            currentUploadingReq.abort();
+            currentUploadingReq.removeEventListener('load', processUploadingResponse)
+            currentUploadingReq.removeEventListener('progress', showUploadProgress)
+            currentUploadingReq = null;
+        }
+
+        document.querySelector('#results').style.display = 'none';
+        document.querySelector('#choose-image-button').style.display = 'block';
+        document.querySelector('#cancel-button').style.display = 'none';
+        document.querySelector('#progress-loading-indicator').style.display = 'none';
+        document.querySelector('#upload-percentage').innerHTML = '';
+        document.querySelector('#upload-progress').style.display = 'none';
+        document.querySelector('#error-message').style.display = 'none';
+    }
+
+    function getObjectsDetectionClassesIndex() {
+        req = new XMLHttpRequest();
+        req.responseType = 'json';
+        req.open('GET', 'objects_detection_classes_index');
+
+        req.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+                console.log(this.response.data);
+                objectsDetectionClassesIndex = this.response.data;
+            }
+        };
+
+        req.send(null);
+    }
+
+    function uploadImageToFindobjects() {
+        cancelUploading();
+
+        currentUploadingReq = new XMLHttpRequest();
+
+        var data = new FormData();
+        data.append('file', document.querySelector('#image-file-selector').files[0]);
+
+        currentUploadingReq.addEventListener('load', processUploadingResponse);
+        currentUploadingReq.upload.addEventListener('progress', showUploadProgress);
+
+        currentUploadingReq.responseType = 'json';
+        currentUploadingReq.open('POST', 'find_objects?is_developer_mode=true');
+        currentUploadingReq.send(data);
+
+        document.querySelector('#cancel-button').style.display = 'inline-block';
+        document.querySelector('#error-message').style.display = 'none';
+        document.querySelector('#upload-progress').style.display = 'block';
+        document.querySelector('#upload-percentage').innerHTML = '';
+        document.querySelector('#choose-image-button').style.display = 'none';
+        document.querySelector('#progress-loading-indicator').style.display = 'block';
+    }
+
+	window.onload = function () {
+	    getobjectsDetectionClassesIndex();
+
+        document.querySelector('#choose-image-button').addEventListener('click', function() {
+            document.querySelector('#image-file-selector').click();
+        });
+
+        document.querySelector('#image-file-selector').addEventListener('change', onFileSelected);
+        document.querySelector('#upload-image-file-button').addEventListener('click', uploadImageToFindobjects);
+        document.querySelector('#cancel-button').addEventListener('click', cancelUploading);
+
+        document.querySelector('#results').style.display = 'none';
+        document.querySelector('#orig-image-container').style.display = 'none';
+        document.querySelector('#upload-progress').style.display = 'none';
+        document.querySelector('#upload-controls').style.display = 'none';
+        document.querySelector('#cancel-button').style.display = 'none';
+	}
+</script>
+
+<div id="progress-loading-indicator" class="loading" style="display: none">
+    <div class="loader"></div>
+</div>
+
+<div class="container">
+    <div class="header">
+        <div id="upload-container">
+            <div id="upload-choose-container" style="display: block">
+                <input type="file" style="display:none" id="image-file-selector" accept="image/jpeg"/>
+            </div>
+
+            <div id="upload-file-final-container">
+                <div id="file-info" class="file-info" style="display: none">
+                    <span class="file-info-label">name:</span><span id="file-name"></span>
+                    <br/>
+                    <span class="file-info-label">size:</span><span id="file-size"></span>
+                </div>
+
+                <div id="upload-controls">
+                    <button id="upload-image-file-button" class="btn">Analyze</button>
+
+                    <div id="upload-progress">
+                        <span id="upload-percentage"></span>
+                    </div>
+                </div>
+
+                <button id="cancel-button" class="btn">Cancel</button>
+
+                <button id="choose-image-button" class="btn">Choose an Image</button>
+
+                <div id="orig-image-container">
+                    <img id="orig-image-to-load"/>
+                </div>
+            </div>
+
+            <div id="error-message" style="display: none;">
+                <span class="error-label">error code:</span><span id="error-code"></span>
+                <br/>
+                <span class="error-label">error desc:</span><span id="error-desc"></span>
+            </div>
+        </div>
+    </div>
+
+    <div id="results">
+        <div style="margin-bottom: 10px;">
+            <div style="color: blue; font-size: 14pt; padding: 0 0 10px 0;" id="scroll-to">Found Objects:</div>
+            <div id="all-found-objects">
+
+            </div>
+        </div>
+
+        <div>
+            <div style="color: red; font-size: 14pt; padding: 0 0 10px 0;">Objects visualization settings:</div>
+            <div id="objects-to-visualize-selector">
+
+            </div>
+        </div>
+
+        <div id="threshold-container">
+            <label>
+                Score min-max threshold
+                <input id="score-threshold-min" type="number" name="points" value="0.5" step="0.1" max="1" min="0">
+                -
+                <input id="score-threshold-max" type="number" name="points" value="1" step="0.1" max="1" min="0">
+            </label>
+            <button id="visualize-button" onclick="doObjectsVisualization(this);">Visualize</button>
+        </div>
+
+        <div id="canvas-container">
+            <canvas id="visualize-founded-objects-canvas"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,5 @@
+.ipynb_checkpoints
+.idea
+__pycache__
+./demo_dataset
+uploaded_images
