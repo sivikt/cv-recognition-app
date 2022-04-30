@@ -1,6 +1,6 @@
 import argparse
 
-import cv_recognition_app
+import cv_models_serving_app
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--host', required=False, default='localhost', help='server hostname')
@@ -15,4 +15,4 @@ args_config = {
 }
 
 
-cv_recognition_app.start(args_config)
+cv_models_serving_app.start(args_config)

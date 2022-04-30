@@ -1,0 +1,15 @@
+[Unit]
+Description=CV Recognition UI Service
+After=cv_models_serving.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cv-recognition-app/webapi_uiproxy
+ExecStart=/usr/local/bin/gunicorn webclient_app:app -b localhost:8089 --workers 2 --timeout 6600
+Restart=on-failure
+RestartSec=30
+TimeoutSec=30
+User=webapp
+
+[Install]
+WantedBy=multi-user.target

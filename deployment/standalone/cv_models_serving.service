@@ -1,0 +1,14 @@
+[Unit]
+Description=CV Models Serving Service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cv-recognition-app/cv_models_serving
+ExecStart=/usr/local/bin/gunicorn cv_models_serving_app:app -b localhost:8180 --workers 1 --timeout 6600
+Restart=on-failure
+RestartSec=30
+TimeoutSec=30
+User=webapp
+
+[Install]
+WantedBy=multi-user.target
